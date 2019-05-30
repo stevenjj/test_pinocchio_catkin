@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.12)
 project(test_pinocchio_catkin)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-#add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -14,7 +14,6 @@ add_definitions(-Wno-deprecated)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 find_package(Eigen3 3.0.0 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
-
 
 catkin_package(
 #  INCLUDE_DIRS include

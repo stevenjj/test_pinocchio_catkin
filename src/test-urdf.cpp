@@ -9,7 +9,9 @@ int main(int argc, char ** argv)
   pinocchio::Model model;
   pinocchio::urdf::buildModel(filename,model);
   pinocchio::Data data(model);
-  Eigen::VectorXd q = pinocchio::randomConfiguration(model);
+//  Eigen::VectorXd q = pinocchio::randomConfiguration(model);
+  Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
+
   std::cout << "q = " << q.transpose() << std::endl;
 
   pinocchio::forwardKinematics(model,data,q);

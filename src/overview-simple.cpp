@@ -8,7 +8,7 @@ int main()
   pinocchio::buildModels::manipulator(model);
   pinocchio::Data data(model);
 
-  Eigen::VectorXd q = pinocchio::neutral(model);
+  Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq); //pinocchio::neutral(model);
   Eigen::VectorXd v = Eigen::VectorXd::Zero(model.nv);
   Eigen::VectorXd a = Eigen::VectorXd::Zero(model.nv);
 
