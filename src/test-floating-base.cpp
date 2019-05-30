@@ -142,9 +142,11 @@ int main(int argc, char ** argv)
   std::cout << "new configuration after a forward motion" << std::endl;
   std::cout << q_plus.transpose() << std::endl; 
 
+  // To recompute the Jacobian:
+/*
   // Do forward kinematics again
   pinocchio::forwardKinematics(model,data,q_plus);
-  
+
   // Print Jacobian again
   pinocchio::computeJointJacobians(model,data,q_plus);
   pinocchio::updateFramePlacement(model, data, rp_index);
@@ -152,6 +154,29 @@ int main(int argc, char ** argv)
 
   std::cout << "J_rpalm w.r.t world:" << std::endl;
   std::cout << J_rpalm << std::endl;
+*/
+
+// Prepare to perform pseudo inverse
+pinocchio::Data::RowMatrixXs J_task = J_rpalm;
+
+const double svd_thresh = 1e-4;
+unsigned int svdOptions = Eigen::ComputeThinU | Eigen::ComputeThinV;
+Eigen::JacobiSVD<Eigen::MatrixXd> svd(J_task.rows(), model.nv,svdOptions);
+svd.setThreshold(svd_thresh);
+
+Eigen::VectorXd dx_des = Eigen::VectorXd::Zero(6);
+dx_des[0] = 1.0; // example error direction
+Eigen::VectorXd dq = svd.compute(J_task).solve(dx_des);
+
+std::cout << "dq change = " << std::endl;
+std::cout << dq.transpose() << std::endl;
+
+
+// std::cout << "number of rows in J_task: " <<  J_task.rows() << std::endl;
+// pinocchio::Data::RowMatrixXs lambda = J_task*data.Minv*J_task.transpose()
+// Answer with dynamically consistent inverse: 
+// dq = data.Minv*J_task.transpose()*svd.compute(J_task*A*J_task.transpose()).solve(dx)
+
 
 
 /*
@@ -166,8 +191,8 @@ JMinvJt = J*data.Minv*Jt
 
 // Compute Cholesky Decomposition ... 
 data.llt_JMinvJt.compute(data.JMinvJt);
-
 */
+
 
 
 
