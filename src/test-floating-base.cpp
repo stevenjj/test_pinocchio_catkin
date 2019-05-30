@@ -16,15 +16,14 @@
 // Recursive Newton-Euler Algorithm
 #include "pinocchio/algorithm/rnea.hpp"
 
+#include <Configuration.h>
 
 int main(int argc, char ** argv)
 {
-  std::string filename = (argc<=1) ? "ur5.urdf" : argv[1];
+  std::string filename = (argc<=1) ? THIS_PACKAGE_PATH"models/valkyrie_test.urdf" : argv[1];
   pinocchio::Model model;
   pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
   pinocchio::Data data(model);
-
-  // Eigen::VectorXd q = pinocchio::randomConfiguration(model);
 
   Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
 
@@ -51,10 +50,10 @@ int main(int argc, char ** argv)
   pinocchio::forwardKinematics(model,data,q);
 
   // List Joint SE(3) configurations after a forward kinematics
-  // for (int k=0 ; k<model.njoints ; ++k){
-  //   std::cout << model.names[k] << "\t: " << "translation:" << data.oMi[k].translation().transpose() << std::endl;
-  //   std::cout << "rotation:\n" << data.oMi[k].rotation() << std::endl;
-  // }
+  for (int k=0 ; k<model.njoints ; ++k){
+    std::cout << model.names[k] << "\t: " << "translation:" << data.oMi[k].translation().transpose() << std::endl;
+    std::cout << "rotation:\n" << data.oMi[k].rotation() << std::endl;
+  }
 
   std::cout << "size of q: " << q.size() << std::endl;
   std::cout << "num of joints: " << model.njoints << std::endl;
@@ -142,19 +141,19 @@ int main(int argc, char ** argv)
   std::cout << "new configuration after a forward motion" << std::endl;
   std::cout << q_plus.transpose() << std::endl; 
 
-  // To recompute the Jacobian:
-/*
-  // Do forward kinematics again
-  pinocchio::forwardKinematics(model,data,q_plus);
+  // // To recompute the Jacobian:
 
-  // Print Jacobian again
-  pinocchio::computeJointJacobians(model,data,q_plus);
-  pinocchio::updateFramePlacement(model, data, rp_index);
-  pinocchio::getFrameJacobian(model,     data,        rp_index, pinocchio::WORLD, J_rpalm);
+  // // Do forward kinematics again
+  // pinocchio::forwardKinematics(model,data,q_plus);
 
-  std::cout << "J_rpalm w.r.t world:" << std::endl;
-  std::cout << J_rpalm << std::endl;
-*/
+  // // Print Jacobian again
+  // pinocchio::computeJointJacobians(model,data,q_plus);
+  // pinocchio::updateFramePlacement(model, data, rp_index);
+  // pinocchio::getFrameJacobian(model,     data,        rp_index, pinocchio::WORLD, J_rpalm);
+
+  // std::cout << "J_rpalm w.r.t world:" << std::endl;
+  // std::cout << J_rpalm << std::endl;
+
 
 // Prepare to perform pseudo inverse
 pinocchio::Data::RowMatrixXs J_task = J_rpalm;
@@ -179,20 +178,18 @@ std::cout << dq.transpose() << std::endl;
 
 
 
-/*
-// Prepare Jacobian
-get(J)
 
-// Compute M inverse
-pinocchio::computeMinverse(model,data,q);
+// // Prepare Jacobian
+// get(J)
 
-Store JMinvJ
-JMinvJt = J*data.Minv*Jt
+// // Compute M inverse
+// pinocchio::computeMinverse(model,data,q);
 
-// Compute Cholesky Decomposition ... 
-data.llt_JMinvJt.compute(data.JMinvJt);
-*/
+// Store JMinvJ
+// JMinvJt = J*data.Minv*Jt
 
+// // Compute Cholesky Decomposition ... 
+// data.llt_JMinvJt.compute(data.JMinvJt);
 
 
 
