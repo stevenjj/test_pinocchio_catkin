@@ -2,6 +2,6 @@
     <node name="visualize_ik_solution" pkg="test_pinocchio_catkin" type="visualize_ik_solution" output="screen" /> 
     
     <include file="$(find val_viz)/launch/viz_robot_and_ik.launch">
-      <arg name="use_static_transform" value="True"/>
+      <arg name="use_static_transform" value="False"/>
     </include>      
 </launch>

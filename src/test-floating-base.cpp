@@ -52,11 +52,14 @@ int main(int argc, char ** argv)
   // List Joint SE(3) configurations after a forward kinematics
   for (int k=0 ; k<model.njoints ; ++k){
     std::cout << model.names[k] << "\t: " << "translation:" << data.oMi[k].translation().transpose() << std::endl;
-    std::cout << "rotation:\n" << data.oMi[k].rotation() << std::endl;
+    std::cout << model.getJointId(model.names[k]) << std::endl;
+    // std::cout << "rotation:\n" << data.oMi[k].rotation() << std::endl;
   }
 
   std::cout << "size of q: " << q.size() << std::endl;
   std::cout << "num of joints: " << model.njoints << std::endl;
+
+  std::cout << "num of joints in data.joints" << data.joints.size() << std::endl;
 
 
   // List joint names:

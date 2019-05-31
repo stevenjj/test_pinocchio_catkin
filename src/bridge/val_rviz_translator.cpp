@@ -22,6 +22,11 @@ void Val_Rviz_Translator::populate_joint_state_msg(const pinocchio::Model & mode
   //   joint_states.position.push_back(joint_value);
   // }
 
+  for (int k = 2; k < model.njoints; k++){
+    joint_states.name.push_back(model.names[k]);
+    joint_states.position.push_back(q[getJointId(model, model.names[k])]);   
+  }
+
 
   // Prepare the world to pelvis transform
   tf::Transform transform;
@@ -33,10 +38,14 @@ void Val_Rviz_Translator::populate_joint_state_msg(const pinocchio::Model & mode
   // sejong::convert(so3_pelvis, quat_pelvis);
 
   // // Initialize quaternion and set the transform
-  // tf::Quaternion quat_world_to_pelvis(quat_pelvis.x(), quat_pelvis.y(), quat_pelvis.z(), quat_pelvis.w()); //x, y, z, w
-  // transform.setRotation(quat_world_to_pelvis);
+  tf::Quaternion quat_world_to_pelvis(q[3], q[4], q[5], q[6]); //x, y, z, w
+  transform.setRotation(quat_world_to_pelvis);
 
   // Set Output
   joint_state_msg = joint_states;
   world_to_pelvis_transform = transform;
+}
+
+int Val_Rviz_Translator::getJointId(const pinocchio::Model & model, const std::string & name){
+  return 7 + model.getJointId(name) - 2;  
 }

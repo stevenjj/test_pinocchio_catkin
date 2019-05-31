@@ -14,9 +14,11 @@ public:
   								 const Eigen::VectorXd & q,
                                  tf::Transform & world_to_pelvis_transform,
                                  sensor_msgs::JointState & joint_state_msg);
+  int getJointId(const pinocchio::Model & model, const std::string & name);
 
   Val_Rviz_Translator();
   ~Val_Rviz_Translator();  
+
 
 };
 

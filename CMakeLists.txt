@@ -50,4 +50,4 @@ target_link_libraries(test-urdf ${catkin_LIBRARIES})
 target_link_libraries(test-floating-base ${catkin_LIBRARIES})
 
 add_executable(visualize_ik_solution src/visualize_ik_solution.cpp)
-target_link_libraries(visualize_ik_solution ${catkin_LIBRARIES})
+target_link_libraries(visualize_ik_solution rviz_bridge_files ${catkin_LIBRARIES})
