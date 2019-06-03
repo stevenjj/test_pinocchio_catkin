@@ -78,6 +78,19 @@ int main(int argc, char ** argv)
   pinocchio::FrameIndex rp_index = model.getFrameId("rightPalm");
   std::cout << "frame: " << model.frames[rp_index] << std::endl;
 
+  std::cout << "frame parent joint index:" << model.frames[rp_index].parent << std::endl;
+  pinocchio::JointIndex rpalm_parent =  model.frames[rp_index].parent;
+  std::cout << "parent joint name: " << model.names[rpalm_parent] << std::endl;
+  std::cout << "joint index from name:" <<  model.getJointId( model.names[rpalm_parent] ) << std::endl;
+
+  std::cout << "frame pos w.r.t parent: " << model.frames[rp_index].placement.translation().transpose() << std::endl;
+  std::cout << "frame orientation w.r.t parent: " << model.frames[rp_index].placement.rotation() << std::endl;
+
+  std::cout << "parent translation:" << data.oMi[rpalm_parent].translation().transpose() << std::endl;
+  std::cout << "parent rotation:" << data.oMi[rpalm_parent].rotation() << std::endl;
+
+  std::cout << "rpalm frame in world:" << data.oMi[rpalm_parent] * model.frames[rp_index].placement << std::endl;
+
   pinocchio::Data::Matrix6x J_rpalm(6,model.nv); J_rpalm.fill(0);
   pinocchio::computeJointJacobians(model,data,q);
   pinocchio::updateFramePlacement(model, data, rp_index);

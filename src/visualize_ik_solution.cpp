@@ -28,14 +28,34 @@ public:
 	TestVal_IK();
 	~TestVal_IK();
     pinocchio::Model model;
-    
+
     std::unique_ptr<pinocchio::Data> data;
     std::unique_ptr<pinocchio::Data> data_ik;
 
     Eigen::VectorXd q_start;
     Eigen::VectorXd q_end;    
 
+    Eigen::Vector3d rfoot_des_pos;
+    Eigen::Quaternion<double> rfoot_des_quat;    
+    Eigen::Vector3d rfoot_error;
+
+    Eigen::Vector3d lfoot_des_pos;
+    Eigen::Quaternion<double> lfoot_des_quat;    
+    Eigen::Vector3d lfoot_error;
+
+    Eigen::VectorXd task_error;
+
+    void computeTranslationError(const Eigen::VectorXd & des, 
+    							 const Eigen::VectorXd & current,
+    							 Eigen::VectorXd & error);
+
+    void computeQuaternionError(const Eigen::Quaternion<double> & des, 
+    							const Eigen::Quaternion<double> & current,
+    							Eigen::Vector3d & error);
+
     int getJointId(const std::string & name);
+
+    void initialize_desired();
 
 };
 
@@ -89,6 +109,22 @@ TestVal_IK::TestVal_IK(){
 int TestVal_IK::getJointId(const std::string & name){
 	return NUM_FLOATING_JOINTS + model.getJointId(name) - JOINT_INDX_OFFSET;  
 }
+
+/*
+	get current pos and orientation of hand and feet.
+	dx = des - current
+
+	check error: if norm(dx) < epsilon break;
+		
+	update the stacked task Jacobians
+	J = [J_left^T, J_right_^T]^T
+
+	compute the resulting command
+	dq = Jinv * dx
+
+	update the robot:
+	q_plus = q + dq
+*/
 
 // Destructor
 TestVal_IK::~TestVal_IK(){
