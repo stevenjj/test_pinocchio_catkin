@@ -38,11 +38,14 @@ public:
     Eigen::Vector3d rfoot_des_pos;
     Eigen::Quaternion<double> rfoot_des_quat;    
     Eigen::Vector3d rfoot_error;
+	Eigen::Vector3d rfoot_ori_error;
 
     Eigen::Vector3d lfoot_des_pos;
     Eigen::Quaternion<double> lfoot_des_quat;    
     Eigen::Vector3d lfoot_error;
+	Eigen::Vector3d lfoot_ori_error;
 
+    Eigen::MatrixXd J_task;    
     Eigen::VectorXd task_error;
 
     void computeTranslationError(const Eigen::VectorXd & des, 
@@ -53,8 +56,11 @@ public:
     							const Eigen::Quaternion<double> & current,
     							Eigen::Vector3d & error);
 
+    void getFrameWorldPose(const std::string & name, Eigen::Vector3d position, Eigen::Quaternion<double> orientation);
+
     int getJointId(const std::string & name);
 
+   	void initialize_configuration();
     void initialize_desired();
 
 };
@@ -63,11 +69,13 @@ public:
 TestVal_IK::TestVal_IK(){
 	std::string filename = THIS_PACKAGE_PATH"models/valkyrie_test.urdf";
 	pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
-	// data = new pinocchio::Data(model);
-
 	data = std::unique_ptr<pinocchio::Data>(new pinocchio::Data(model));
 
+	initialize_configuration();
+	initialize_desired();
+}
 
+void TestVal_IK::initialize_configuration(){
 	// initialize configurations.
 	q_start = Eigen::VectorXd::Zero(model.nq);
 	q_end = Eigen::VectorXd::Zero(model.nq);
@@ -105,6 +113,29 @@ TestVal_IK::TestVal_IK(){
 	std::cout << "q_start:" << q_start.transpose() << std::endl;
 	std::cout << "q_end:" << q_end.transpose() << std::endl;
 }
+
+void TestVal_IK::initialize_desired(){
+	// Foot should be flat on the ground at (0,0,0)    std::cout << "Task Error Dim:" << task_error.size() << std::endl;
+
+    rfoot_des_pos.setZero();
+	rfoot_des_quat.setIdentity();
+	rfoot_error.setZero();
+	rfoot_ori_error.setZero();
+
+    lfoot_des_pos.setZero();
+	lfoot_des_quat.setIdentity();
+	lfoot_error.setZero();    
+	lfoot_ori_error.setZero();
+
+	size_t task_dim = rfoot_error.size() + rfoot_ori_error.size() + lfoot_error.size() + lfoot_ori_error.size();
+    J_task = Eigen::MatrixXd::Zero(task_dim, model.nv);    
+    task_error = Eigen::VectorXd::Zero(task_dim);
+
+    std::cout << "Task Dim:" << task_dim << std::endl;
+    std::cout << "Task Error Dim:" << task_error.size() << std::endl;
+    std::cout << "J_task rows, cols: " << J_task.rows() << " " << J_task.cols() << std::endl;
+}
+
 
 int TestVal_IK::getJointId(const std::string & name){
 	return NUM_FLOATING_JOINTS + model.getJointId(name) - JOINT_INDX_OFFSET;  
