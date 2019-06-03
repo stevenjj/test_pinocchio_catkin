@@ -28,8 +28,9 @@ public:
 	TestVal_IK();
 	~TestVal_IK();
     pinocchio::Model model;
-    pinocchio::Data* data;
-    pinocchio::Data* data_ik;
+    
+    std::unique_ptr<pinocchio::Data> data;
+    std::unique_ptr<pinocchio::Data> data_ik;
 
     Eigen::VectorXd q_start;
     Eigen::VectorXd q_end;    
@@ -42,7 +43,9 @@ public:
 TestVal_IK::TestVal_IK(){
 	std::string filename = THIS_PACKAGE_PATH"models/valkyrie_test.urdf";
 	pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
-	data = new pinocchio::Data(model);
+	// data = new pinocchio::Data(model);
+
+	data = std::unique_ptr<pinocchio::Data>(new pinocchio::Data(model));
 
 
 	// initialize configurations.
@@ -89,8 +92,6 @@ int TestVal_IK::getJointId(const std::string & name){
 
 // Destructor
 TestVal_IK::~TestVal_IK(){
-	delete data;
-	delete data_ik;
 }
 
 int main(int argc, char **argv){
