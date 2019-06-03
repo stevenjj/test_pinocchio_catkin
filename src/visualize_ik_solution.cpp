@@ -37,13 +37,21 @@ public:
 
     Eigen::Vector3d rfoot_des_pos;
     Eigen::Quaternion<double> rfoot_des_quat;    
-    Eigen::Vector3d rfoot_error;
+    Eigen::Vector3d rfoot_pos_error;
 	Eigen::Vector3d rfoot_ori_error;
+
+	Eigen::Vector3d rfoot_cur_pos;
+	Eigen::Quaternion<double> rfoot_cur_ori;
+	Eigen::MatrixXd J_rfoot;
 
     Eigen::Vector3d lfoot_des_pos;
     Eigen::Quaternion<double> lfoot_des_quat;    
-    Eigen::Vector3d lfoot_error;
+    Eigen::Vector3d lfoot_pos_error;
 	Eigen::Vector3d lfoot_ori_error;
+
+	Eigen::Vector3d lfoot_cur_pos;
+	Eigen::Quaternion<double> lfoot_cur_ori;
+	Eigen::MatrixXd J_lfoot;
 
     Eigen::MatrixXd J_task;    
     Eigen::VectorXd task_error;
@@ -51,9 +59,9 @@ public:
 	std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> > svd;
 
 
-    void computeTranslationError(const Eigen::VectorXd & des, 
-    							 const Eigen::VectorXd & current,
-    							 Eigen::VectorXd & error);
+    void computeTranslationError(const Eigen::Vector3d & des, 
+    							 const Eigen::Vector3d & current,
+    							 Eigen::Vector3d & error);
 
     void computeQuaternionError(const Eigen::Quaternion<double> & des, 
     							const Eigen::Quaternion<double> & current,
@@ -67,11 +75,25 @@ public:
    	void initialize_configuration();
     void initialize_desired();
 
+
+    void printPose(const Eigen::Vector3d & pos, const Eigen::Quaternion<double> & ori);
+    void printQuat(const Eigen::Quaternion<double> & ori);
+
+
 private:
-	// Pre-allocate general accessors
+	// Pre-allocate some data types used
 	pinocchio::FrameIndex tmp_frame_index;
 	pinocchio::SE3 tmp_T_world;
 	pinocchio::JointIndex tmp_joint_index;
+
+	Eigen::AngleAxis<double> axis_angle;
+
+
+
+
+	void doSingleStepIK();
+
+	void doSmallTests();
 
 };
 
@@ -81,18 +103,35 @@ TestVal_IK::TestVal_IK(){
 	pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
 	data = std::unique_ptr<pinocchio::Data>(new pinocchio::Data(model));
 
-
 	initialize_configuration();
 	initialize_desired();
 
 
+	doSmallTests();
+}
+
+void TestVal_IK::doSmallTests(){
     Eigen::Vector3d cur_pos;
     Eigen::Quaternion<double> cur_ori;
 	getFrameWorldPose("rightCOP_Frame", cur_pos, cur_ori);
 	getFrameWorldPose("leftCOP_Frame", cur_pos, cur_ori);
 
-	Eigen::MatrixXd J_rpalm(6, model.nv); J_rpalm.fill(0); 
-	getTaskJacobian("rightCOP_Frame",J_rpalm);
+	Eigen::MatrixXd J_test(6, model.nv); J_test.fill(0); 
+	getTaskJacobian("rightCOP_Frame",J_test);
+	getTaskJacobian("leftCOP_Frame",J_test);
+
+
+
+	// Initialize des Quaternion
+	double theta = M_PI/4.0;
+	Eigen::AngleAxis<double> aa(theta, Eigen::Vector3d(0.0, 0.0, 1.0));
+	Eigen::Quaternion<double> quat_des; quat_des =  aa;
+
+	cur_ori = Eigen::AngleAxis<double>(-theta, Eigen::Vector3d(0.0, 0.0, 1.0));
+
+	Eigen::Vector3d werror; werror.fill(0);
+	computeQuaternionError(quat_des, cur_ori, werror);
+
 }
 
 void TestVal_IK::initialize_configuration(){
@@ -135,30 +174,36 @@ void TestVal_IK::initialize_configuration(){
 
 	// Perform initial forward kinematics
 	pinocchio::forwardKinematics(model, *data, q_start);
-
 	// Compute Joint Jacobians
 	computeJointJacobians(model,*data,q_start);
-
 	// Update Frame Placements
     updateFramePlacements(model, *data);
 
 }
 
 void TestVal_IK::initialize_desired(){
-	// Foot should be flat on the ground and spaced out by 0.25m on each side (0,0,0)    std::cout << "Task Error Dim:" << task_error.size() << std::endl;
+	// Foot should be flat on the ground and spaced out by 0.25m on each side (0,0,0)    
     rfoot_des_pos.setZero();
     rfoot_des_pos[1] = -0.125;
 	rfoot_des_quat.setIdentity();
-	rfoot_error.setZero();
+	rfoot_pos_error.setZero();
 	rfoot_ori_error.setZero();
+
+	rfoot_cur_pos.setZero();
+	rfoot_cur_ori.setIdentity();
+	J_rfoot = Eigen::MatrixXd::Zero(6, model.nv);
 
     lfoot_des_pos.setZero();
     lfoot_des_pos[1] = 0.125;    
 	lfoot_des_quat.setIdentity();
-	lfoot_error.setZero();    
+	lfoot_pos_error.setZero();    
 	lfoot_ori_error.setZero();
 
-	size_t task_dim = rfoot_error.size() + rfoot_ori_error.size() + lfoot_error.size() + lfoot_ori_error.size();
+	lfoot_cur_pos.setZero();
+	lfoot_cur_ori.setIdentity();
+	J_lfoot = Eigen::MatrixXd::Zero(6, model.nv);
+
+	int task_dim = J_rfoot.rows() + J_lfoot.rows();
     J_task = Eigen::MatrixXd::Zero(task_dim, model.nv);    
     task_error = Eigen::VectorXd::Zero(task_dim);
 
@@ -199,9 +244,77 @@ void TestVal_IK::getFrameWorldPose(const std::string & name, Eigen::Vector3d & p
 }
 
 void TestVal_IK::getTaskJacobian(const std::string & frame_name, Eigen::MatrixXd & J){
+  tmp_frame_index = model.getFrameId(frame_name);
   pinocchio::getFrameJacobian(model, *data, tmp_frame_index, pinocchio::WORLD, J);
   std::cout << frame_name << " Jacobian: " << std::endl;
   std::cout << J << std::endl;
+}
+
+void TestVal_IK::computeTranslationError(const Eigen::Vector3d & des, const Eigen::Vector3d & current, Eigen::Vector3d & error){
+	error = des - current;
+}
+
+void TestVal_IK::computeQuaternionError(const Eigen::Quaternion<double> & des, 
+ 		    							const Eigen::Quaternion<double> & current,
+    									Eigen::Vector3d & error){
+	// Perform quaternion error multiplication then cast it as an axis angle definition.
+	axis_angle = des*current.inverse(); 
+	// Convert to Vector3. error = w^hat_error * theta_error. 
+	error = axis_angle.axis() * axis_angle.angle();
+
+	std::cout << "Error in axis Angle:" << std::endl;
+	std::cout << error.transpose() << std::endl;
+
+}
+
+
+void TestVal_IK::printPose(const Eigen::Vector3d & pos, const Eigen::Quaternion<double> & ori){
+  std::cout << "Position: " << pos.transpose() << std::endl;
+  printQuat(ori);
+}
+
+void TestVal_IK::printQuat(const Eigen::Quaternion<double> & ori){
+  std::cout << "Quat (x,y,z,w): " << ori.x() << " " <<
+									 ori.y() << " " <<
+									 ori.z() << " " <<
+									 ori.w() << " " <<
+  std::endl;	
+}
+
+void TestVal_IK::doSingleStepIK(){
+ //    Eigen::VectorXd q_start;
+ //    Eigen::VectorXd q_end;    
+
+ //    Eigen::Vector3d rfoot_des_pos;
+ //    Eigen::Quaternion<double> rfoot_des_quat;    
+ //    Eigen::Vector3d rfoot_pos_error;
+	// Eigen::Vector3d rfoot_ori_error;
+
+	// Eigen::Vector3d rfoot_cur_pos;
+	// Eigen::Quaternion<double> rfoot_cur_ori;
+	// Eigen::MatrixXd J_rfoot;
+
+ //    Eigen::Vector3d lfoot_des_pos;
+ //    Eigen::Quaternion<double> lfoot_des_quat;    
+ //    Eigen::Vector3d lfoot_pos_error;
+	// Eigen::Vector3d lfoot_ori_error;
+
+	// Eigen::Vector3d lfoot_cur_pos;
+	// Eigen::Quaternion<double> lfoot_cur_ori;
+	// Eigen::MatrixXd J_lfoot;
+
+ //    Eigen::MatrixXd J_task;    
+ //    Eigen::VectorXd task_error;
+
+    // Get Current Position and Orientation 
+    getFrameWorldPose("rightCOP_Frame", rfoot_cur_pos, rfoot_cur_ori);
+    getFrameWorldPose("leftCOP_Frame", lfoot_cur_pos, lfoot_cur_ori);
+
+    // Compute Linear and Orientation errors
+    computeTranslationError(rfoot_des_pos, rfoot_cur_pos, rfoot_pos_error);
+    computeTranslationError(lfoot_des_pos, lfoot_cur_pos, lfoot_pos_error);
+
+
 }
 
 
