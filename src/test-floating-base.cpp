@@ -18,8 +18,13 @@
 
 #include <Configuration.h>
 
+#include "pinocchio/utils/timer.hpp"
+
+
 int main(int argc, char ** argv)
 {
+  PinocchioTicToc timer = PinocchioTicToc(PinocchioTicToc::US);
+
   std::string filename = (argc<=1) ? THIS_PACKAGE_PATH"models/valkyrie_test.urdf" : argv[1];
   pinocchio::Model model;
   pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
@@ -47,7 +52,10 @@ int main(int argc, char ** argv)
   std::cout << "q = " << q.transpose() << std::endl;
 
   // Note that this function does not check if the quaternion is a valid unit quaternion.
+  timer.tic();
   pinocchio::forwardKinematics(model,data,q);
+  timer.toc(std::cout);
+
 
   // List Joint SE(3) configurations after a forward kinematics
   for (int k=0 ; k<model.njoints ; ++k){

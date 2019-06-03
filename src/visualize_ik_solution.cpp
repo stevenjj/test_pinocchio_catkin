@@ -23,6 +23,12 @@
 #define NUM_FLOATING_JOINTS 7 // 3 for x,y,z and 4 for qx, qy, qz, qw
 #define JOINT_INDX_OFFSET 2 //pinocchio attaches a universe joint and a root joint that we need to remove
 
+#define SVD_SOLVER JacobiSVD
+//#define SVD_SOLVER BDCSVD
+
+#include "pinocchio/utils/timer.hpp"
+
+
 class TestVal_IK{
 public:
 	TestVal_IK();
@@ -57,7 +63,7 @@ public:
     Eigen::MatrixXd J_task;    
     Eigen::VectorXd task_error;
 
-	std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> > svd;
+	std::unique_ptr< Eigen::SVD_SOLVER<Eigen::MatrixXd> > svd;
 	unsigned int svdOptions = Eigen::ComputeThinU | Eigen::ComputeThinV;
 
     void computeTranslationError(const Eigen::Vector3d & des, 
@@ -93,6 +99,9 @@ private:
 
 	Eigen::AngleAxis<double> axis_angle;
 
+    PinocchioTicToc timer;
+
+
 	void doSmallTests();
 
 };
@@ -102,6 +111,9 @@ TestVal_IK::TestVal_IK(){
 	std::string filename = THIS_PACKAGE_PATH"models/valkyrie_test.urdf";
 	pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
 	data = std::unique_ptr<pinocchio::Data>(new pinocchio::Data(model));
+
+	// Initialize timer. Use milliseconds
+	timer = PinocchioTicToc(PinocchioTicToc::MS);
 
 	initialize_configuration();
 	initialize_desired();
@@ -188,11 +200,19 @@ void TestVal_IK::initialize_configuration(){
 
 void TestVal_IK::updateKinematics(const Eigen::VectorXd & q_update){
 	// Perform initial forward kinematics
+	std::cout << "  ";	timer.tic();
 	pinocchio::forwardKinematics(model, *data, q_update);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " forward kinematics computation time" << std::endl;
+
 	// Compute Joint Jacobians
+	std::cout << "  ";	timer.tic();
 	computeJointJacobians(model,*data, q_update);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " jacobians computation time" << std::endl;
+
 	// Update Frame Placements
+	std::cout << "  ";	timer.tic();
     updateFramePlacements(model, *data);	
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " frame placements computation time" << std::endl;
 }
 
 
@@ -233,7 +253,7 @@ void TestVal_IK::initialize_desired(){
     std::cout << "J_task rows, cols: " << J_task.rows() << " " << J_task.cols() << std::endl;
 
     // Initialize SVD. Allocate Memory.
-    svd = std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> >( new Eigen::JacobiSVD<Eigen::MatrixXd>(J_task.rows(), model.nv, svdOptions) );
+    svd = std::unique_ptr< Eigen::SVD_SOLVER<Eigen::MatrixXd> >( new Eigen::SVD_SOLVER<Eigen::MatrixXd>(J_task.rows(), model.nv, svdOptions) );
     // Set Singular Value Threshold
 	const double svd_thresh = 1e-4;
 	svd->setThreshold(svd_thresh);
@@ -322,46 +342,66 @@ double TestVal_IK::doSingleStepIK(){
 	check error: if norm(dx) < epsilon break;
 */
 
+
 	// Update Kinematics
 	updateKinematics(q_end);
 
-    // Get Current Position and Orientation 
+	// Get Current Position and Orientation 
+	std::cout << "  ";	timer.tic();
     getFrameWorldPose("rightCOP_Frame", rfoot_cur_pos, rfoot_cur_ori);
     getFrameWorldPose("leftCOP_Frame", lfoot_cur_pos, lfoot_cur_ori);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " get pos+ori computation time" << std::endl;
 
     // Compute Linear and Orientation errors
     // dx = des - current;
+	std::cout << "  ";	timer.tic();
     computeTranslationError(rfoot_des_pos, rfoot_cur_pos, rfoot_pos_error);
     computeTranslationError(lfoot_des_pos, lfoot_cur_pos, lfoot_pos_error);
     computeQuaternionError(rfoot_des_quat, rfoot_cur_ori, rfoot_ori_error);
     computeQuaternionError(lfoot_des_quat, lfoot_cur_ori, lfoot_ori_error);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) <<" error computation time" << std::endl;
+
 
     // Stack Errors
+	std::cout << "  ";	timer.tic();
     task_error.head<3>() = rfoot_pos_error;
     task_error.segment<3>(3) = rfoot_ori_error;
     task_error.segment<3>(6) = lfoot_pos_error;
     task_error.segment<3>(9) = lfoot_ori_error;
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " dx stacking computation time" << std::endl;
 
     // std::cout << "task error = " << task_error.transpose() << std::endl;
 
     // Get Task Jacobians
+	std::cout << "  ";	timer.tic();
 	getTaskJacobian("rightCOP_Frame", J_rfoot);
 	getTaskJacobian("leftCOP_Frame", J_lfoot);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " get Jacobians computation time" << std::endl;
+
 
 	// Stack Jacobians
+	std::cout << "  ";	timer.tic();
 	J_task.topRows(6) = J_rfoot;
 	J_task.bottomRows(6) = J_lfoot;
 	// std::cout << "Task Jacobian:" << std::endl;
 	// std::cout << J_task << std::endl;
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " Jacobian stacking computation time" << std::endl;
+
 
 	// Compute dq = Jpinv*(dx)
+	std::cout << "  ";	timer.tic();
 	dq_change = svd->compute(J_task).solve(task_error);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " pinv(J)*dx computation time" << std::endl;
+
 	// std::cout << "dq_change:" << std::endl;
 	// std::cout << dq_change.transpose() << std::endl;
 
 	// Update once:
 	// q = q + dq;
+	std::cout << "  ";	timer.tic();
 	q_end = pinocchio::integrate(model, q_end, dq_change);
+	std::cout << timer.toc() << timer.unitName(timer.DEFAULT_UNIT) << " q = q+dq computation time" << std::endl;
+
 
     // std::cout << "error norm = " << task_error.norm() << std::endl;
 
@@ -373,9 +413,12 @@ double TestVal_IK::doSingleStepIK(){
 bool TestVal_IK::doFullIk(const int & max_iters){
 	double ik_error_norm = 1000.0;
 	double eps = 1e-6;
+	// Create a timer that outputs microseconds
 	for(int i = 0; i < max_iters; i++){
+		std::cout << "iter: " << i+1 << std::endl;
 		ik_error_norm = doSingleStepIK();
-		std::cout << "iter: " << i+1 << " error_norm = " << ik_error_norm << std::endl;
+
+		std::cout << "   error_norm = " << ik_error_norm << std::endl;
 
 		if (ik_error_norm <= eps){
 			std::cout << "Final error norm = " << ik_error_norm << std::endl;
