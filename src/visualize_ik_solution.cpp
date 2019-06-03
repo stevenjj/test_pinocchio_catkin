@@ -34,6 +34,7 @@ public:
 
     Eigen::VectorXd q_start;
     Eigen::VectorXd q_end;    
+    Eigen::VectorXd dq_change;
 
     Eigen::Vector3d rfoot_des_pos;
     Eigen::Quaternion<double> rfoot_des_quat;    
@@ -57,7 +58,7 @@ public:
     Eigen::VectorXd task_error;
 
 	std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> > svd;
-
+	unsigned int svdOptions = Eigen::ComputeThinU | Eigen::ComputeThinV;
 
     void computeTranslationError(const Eigen::Vector3d & des, 
     							 const Eigen::Vector3d & current,
@@ -78,6 +79,9 @@ public:
 
     void printPose(const Eigen::Vector3d & pos, const Eigen::Quaternion<double> & ori);
     void printQuat(const Eigen::Quaternion<double> & ori);
+
+
+    void updateKinematics(const Eigen::VectorXd & q_update);
 
 
 private:
@@ -108,6 +112,8 @@ TestVal_IK::TestVal_IK(){
 
 
 	doSmallTests();
+
+	doSingleStepIK();
 }
 
 void TestVal_IK::doSmallTests(){
@@ -138,9 +144,15 @@ void TestVal_IK::initialize_configuration(){
 	// initialize configurations.
 	q_start = Eigen::VectorXd::Zero(model.nq);
 	q_end = Eigen::VectorXd::Zero(model.nq);
+	dq_change = Eigen::VectorXd::Zero(model.nv);
 
-	// Initialize Identity Quaternion
+	// Initialize Floating base quaternion to have robot facing pi/4 to the left
+	double theta = M_PI/4.0;
+	Eigen::AngleAxis<double> aa(theta, Eigen::Vector3d(0.0, 0.0, 1.0));
+
 	Eigen::Quaternion<double> init_quat(1.0, 0.0, 0.0, 0.0);
+	init_quat = aa;
+
 	// Set Orientation
 	q_start[3] = init_quat.x(); q_start[4] = init_quat.y(); q_start[5] = init_quat.z(); q_start[6] = init_quat.w();
 
@@ -172,14 +184,22 @@ void TestVal_IK::initialize_configuration(){
 	std::cout << "q_start:" << q_start.transpose() << std::endl;
 	std::cout << "q_end:" << q_end.transpose() << std::endl;
 
-	// Perform initial forward kinematics
-	pinocchio::forwardKinematics(model, *data, q_start);
-	// Compute Joint Jacobians
-	computeJointJacobians(model,*data,q_start);
-	// Update Frame Placements
-    updateFramePlacements(model, *data);
 
+	q_end = q_start;
+	// Update configuration kinematics
+	updateKinematics(q_start);
 }
+
+
+void TestVal_IK::updateKinematics(const Eigen::VectorXd & q_update){
+	// Perform initial forward kinematics
+	pinocchio::forwardKinematics(model, *data, q_update);
+	// Compute Joint Jacobians
+	computeJointJacobians(model,*data, q_update);
+	// Update Frame Placements
+    updateFramePlacements(model, *data);	
+}
+
 
 void TestVal_IK::initialize_desired(){
 	// Foot should be flat on the ground and spaced out by 0.25m on each side (0,0,0)    
@@ -212,7 +232,6 @@ void TestVal_IK::initialize_desired(){
     std::cout << "J_task rows, cols: " << J_task.rows() << " " << J_task.cols() << std::endl;
 
     // Initialize SVD. Allocate Memory.
-	unsigned int svdOptions = Eigen::ComputeThinU | Eigen::ComputeThinV;
     svd = std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> >( new Eigen::JacobiSVD<Eigen::MatrixXd>(J_task.rows(), model.nv) );
     // Set Singular Value Threshold
 	const double svd_thresh = 1e-4;
@@ -252,6 +271,7 @@ void TestVal_IK::getTaskJacobian(const std::string & frame_name, Eigen::MatrixXd
 
 void TestVal_IK::computeTranslationError(const Eigen::Vector3d & des, const Eigen::Vector3d & current, Eigen::Vector3d & error){
 	error = des - current;
+	std::cout << "linear error:" << error.transpose() << std::endl;
 }
 
 void TestVal_IK::computeQuaternionError(const Eigen::Quaternion<double> & des, 
@@ -306,14 +326,45 @@ void TestVal_IK::doSingleStepIK(){
  //    Eigen::MatrixXd J_task;    
  //    Eigen::VectorXd task_error;
 
+	// Update Kinematics
+	updateKinematics(q_end);
+
     // Get Current Position and Orientation 
     getFrameWorldPose("rightCOP_Frame", rfoot_cur_pos, rfoot_cur_ori);
     getFrameWorldPose("leftCOP_Frame", lfoot_cur_pos, lfoot_cur_ori);
 
     // Compute Linear and Orientation errors
+    // dx = des - current;
     computeTranslationError(rfoot_des_pos, rfoot_cur_pos, rfoot_pos_error);
     computeTranslationError(lfoot_des_pos, lfoot_cur_pos, lfoot_pos_error);
+    computeQuaternionError(rfoot_des_quat, rfoot_cur_ori, rfoot_ori_error);
+    computeQuaternionError(lfoot_des_quat, lfoot_cur_ori, lfoot_ori_error);
 
+    // Stack Errors
+    task_error.head<3>() = rfoot_pos_error;
+    task_error.segment<3>(3) = rfoot_ori_error;
+    task_error.segment<3>(6) = lfoot_pos_error;
+    task_error.segment<3>(9) = lfoot_ori_error;
+
+    std::cout << "task error = " << task_error.transpose() << std::endl;
+
+    // Get Task Jacobians
+	getTaskJacobian("rightCOP_Frame", J_rfoot);
+	getTaskJacobian("leftCOP_Frame", J_lfoot);
+
+	// Stack Jacobians
+	J_task.topRows(6) = J_rfoot;
+	J_task.bottomRows(6) = J_lfoot;
+	std::cout << "Task Jacobian:" << std::endl;
+	std::cout << J_task << std::endl;
+
+	// Compute dq = Jpinv*(dx)
+	dq_change = (svd->compute(J_task, svdOptions)).solve(task_error);
+	std::cout << "dq_change:" << std::endl;
+	std::cout << dq_change.transpose() << std::endl;
+
+	// Update once:
+	q_end = pinocchio::integrate(model, q_start, dq_change);
 
 }
 
