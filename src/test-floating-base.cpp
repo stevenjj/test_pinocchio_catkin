@@ -68,10 +68,10 @@ int main(int argc, char ** argv)
   // }  
 
   // List frames
-  // std::cout << "number of frames in the model:" << model.frames.size() << std::endl;
-  // for (int k=0 ; k<model.frames.size() ; ++k){
-  //   std::cout << "frame:" << k << " " << model.frames[k].name <<  std::endl;
-  // }
+  std::cout << "number of frames in the model:" << model.frames.size() << std::endl;
+  for (int k=0 ; k<model.frames.size() ; ++k){
+    std::cout << "frame:" << k << " " << model.frames[k].name <<  std::endl;
+  }
 
 
   // Get frame of the right Palm and compute its Jacobian
