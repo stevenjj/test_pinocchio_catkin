@@ -48,6 +48,9 @@ public:
     Eigen::MatrixXd J_task;    
     Eigen::VectorXd task_error;
 
+	std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> > svd;
+
+
     void computeTranslationError(const Eigen::VectorXd & des, 
     							 const Eigen::VectorXd & current,
     							 Eigen::VectorXd & error);
@@ -56,12 +59,19 @@ public:
     							const Eigen::Quaternion<double> & current,
     							Eigen::Vector3d & error);
 
-    void getFrameWorldPose(const std::string & name, Eigen::Vector3d position, Eigen::Quaternion<double> orientation);
+    void getTaskJacobian(const std::string & frame_name, Eigen::MatrixXd & J);
+    void getFrameWorldPose(const std::string & name, Eigen::Vector3d & pos, Eigen::Quaternion<double> & ori);
 
     int getJointId(const std::string & name);
 
    	void initialize_configuration();
     void initialize_desired();
+
+private:
+	// Pre-allocate general accessors
+	pinocchio::FrameIndex tmp_frame_index;
+	pinocchio::SE3 tmp_T_world;
+	pinocchio::JointIndex tmp_joint_index;
 
 };
 
@@ -71,8 +81,15 @@ TestVal_IK::TestVal_IK(){
 	pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
 	data = std::unique_ptr<pinocchio::Data>(new pinocchio::Data(model));
 
+
 	initialize_configuration();
 	initialize_desired();
+
+
+    Eigen::Vector3d cur_pos;
+    Eigen::Quaternion<double> cur_ori;
+	getFrameWorldPose("rightPalm", cur_pos, cur_ori);
+
 }
 
 void TestVal_IK::initialize_configuration(){
@@ -109,14 +126,19 @@ void TestVal_IK::initialize_configuration(){
 	q_start[getJointId("leftShoulderRoll")] = -1.1;  
 	q_start[getJointId("leftElbowPitch")] = -0.4;
 	q_start[getJointId("leftForearmYaw")] = 1.5;  
-
+ 
 	std::cout << "q_start:" << q_start.transpose() << std::endl;
 	std::cout << "q_end:" << q_end.transpose() << std::endl;
+
+	// Perform initial forward kinematics
+	pinocchio::forwardKinematics(model, *data, q_start);
+	// Update Frame Placements
+    updateFramePlacements(model, *data);
+
 }
 
 void TestVal_IK::initialize_desired(){
 	// Foot should be flat on the ground at (0,0,0)    std::cout << "Task Error Dim:" << task_error.size() << std::endl;
-
     rfoot_des_pos.setZero();
 	rfoot_des_quat.setIdentity();
 	rfoot_error.setZero();
@@ -134,12 +156,58 @@ void TestVal_IK::initialize_desired(){
     std::cout << "Task Dim:" << task_dim << std::endl;
     std::cout << "Task Error Dim:" << task_error.size() << std::endl;
     std::cout << "J_task rows, cols: " << J_task.rows() << " " << J_task.cols() << std::endl;
+
+    // Initialize SVD. Allocate Memory
+	unsigned int svdOptions = Eigen::ComputeThinU | Eigen::ComputeThinV;
+    svd = std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> >( new Eigen::JacobiSVD<Eigen::MatrixXd>(J_task.rows(), model.nv) );
+    // Set Singular Value Threshold
+	const double svd_thresh = 1e-4;
+	svd->setThreshold(svd_thresh);
 }
 
 
 int TestVal_IK::getJointId(const std::string & name){
 	return NUM_FLOATING_JOINTS + model.getJointId(name) - JOINT_INDX_OFFSET;  
 }
+
+void TestVal_IK::getFrameWorldPose(const std::string & name, Eigen::Vector3d & pos, Eigen::Quaternion<double> & ori){
+  tmp_frame_index = model.getFrameId(name);
+  // std::cout << "frame: " << model.frames[tmp_frame_index] << std::endl;
+  // std::cout << "frame parent joint index:" << model.frames[tmp_frame_index].parent << std::endl;
+
+  tmp_joint_index =  model.frames[tmp_frame_index].parent;
+  
+  // std::cout << "parent joint name: " << model.names[tmp_joint_index] << std::endl;
+  // std::cout << "joint index from name:" <<  model.getJointId( model.names[tmp_joint_index] ) << std::endl;
+  // std::cout << "frame pos w.r.t parent: " << model.frames[tmp_frame_index].placement.translation().transpose() << std::endl;
+  // std::cout << "frame orientation w.r.t parent: " << model.frames[tmp_frame_index].placement.rotation() << std::endl;
+  // std::cout << "joint frame location:" <<  data->oMi[tmp_joint_index] << std::endl;
+
+  // Note: frames.placement gets the SE3 w.r.t a joint parent. The joint parent frame (data->Omi[joint_index]) is w.r.t world.
+  //       So, to get the world frame data, we get the SE3 of the parent frame (T_from_world_to_joint_parent) 
+  // 	   and the SE3 of the frame (T_from_parent_to_world).
+  // 	   The world frame is therefore: T_from_world_to_frame =   T_from_world_to_joint_parent*T_from_parent_to_world
+  tmp_T_world = data->oMi[tmp_joint_index] * model.frames[tmp_frame_index].placement;
+
+  std::cout << name << "Frame position w.r.t world " << tmp_T_world << std::endl;
+
+  // Return data
+  pos = tmp_T_world.translation();
+  ori = tmp_T_world.rotation();
+
+  std::cout << name << ":" << std::endl;
+  std::cout << "Pos 3D: " << pos.transpose() << std::endl;
+  std::cout << "Quat (x,y,z,w): " << ori.x() << " " <<
+									 ori.y() << " " <<
+									 ori.z() << " " <<
+									 ori.w() << " " <<
+  std::endl;
+
+  std::cout << "Operational Frame position w.r.t world:" << std::endl;
+  std::cout << data->oMf[tmp_frame_index] << std::endl;
+
+}
+
 
 /*
 	get current pos and orientation of hand and feet.
