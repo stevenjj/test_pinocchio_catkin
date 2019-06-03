@@ -82,7 +82,8 @@ public:
 
 
     void updateKinematics(const Eigen::VectorXd & q_update);
-
+	double doSingleStepIK();
+	bool doFullIk(const int & max_iters);
 
 private:
 	// Pre-allocate some data types used
@@ -91,11 +92,6 @@ private:
 	pinocchio::JointIndex tmp_joint_index;
 
 	Eigen::AngleAxis<double> axis_angle;
-
-
-
-
-	void doSingleStepIK();
 
 	void doSmallTests();
 
@@ -110,34 +106,35 @@ TestVal_IK::TestVal_IK(){
 	initialize_configuration();
 	initialize_desired();
 
-
 	doSmallTests();
-
-	doSingleStepIK();
 }
 
 void TestVal_IK::doSmallTests(){
     Eigen::Vector3d cur_pos;
     Eigen::Quaternion<double> cur_ori;
-	getFrameWorldPose("rightCOP_Frame", cur_pos, cur_ori);
-	getFrameWorldPose("leftCOP_Frame", cur_pos, cur_ori);
 
+	getFrameWorldPose("rightCOP_Frame", cur_pos, cur_ori);
+	std::cout << "current Pose of rightCOP_Frame:" << std::endl; 
+	printPose(cur_pos, cur_ori);
+
+	getFrameWorldPose("leftCOP_Frame", cur_pos, cur_ori);
+	std::cout << "current Pose of leftCOP_Frame:" << std::endl; 
+	printPose(cur_pos, cur_ori);
+
+
+/*
 	Eigen::MatrixXd J_test(6, model.nv); J_test.fill(0); 
 	getTaskJacobian("rightCOP_Frame",J_test);
 	getTaskJacobian("leftCOP_Frame",J_test);
-
-
 
 	// Initialize des Quaternion
 	double theta = M_PI/4.0;
 	Eigen::AngleAxis<double> aa(theta, Eigen::Vector3d(0.0, 0.0, 1.0));
 	Eigen::Quaternion<double> quat_des; quat_des =  aa;
-
 	cur_ori = Eigen::AngleAxis<double>(-theta, Eigen::Vector3d(0.0, 0.0, 1.0));
-
 	Eigen::Vector3d werror; werror.fill(0);
 	computeQuaternionError(quat_des, cur_ori, werror);
-
+*/
 }
 
 void TestVal_IK::initialize_configuration(){
@@ -158,9 +155,9 @@ void TestVal_IK::initialize_configuration(){
 
 	q_end.segment<3>(4) = q_start.segment<3>(4);
 
-	std::cout << "Joint Index of leftHipYaw: " << getJointId("leftHipYaw") << std::endl;
-	std::cout << "Joint Index of rightHipYaw: " << getJointId("rightHipYaw") << std::endl;
-	std::cout << "Joint Index of leftKneePitch: " << getJointId("leftKneePitch") << std::endl;
+	// std::cout << "Joint Index of leftHipYaw: " << getJointId("leftHipYaw") << std::endl;
+	// std::cout << "Joint Index of rightHipYaw: " << getJointId("rightHipYaw") << std::endl;
+	// std::cout << "Joint Index of leftKneePitch: " << getJointId("leftKneePitch") << std::endl;
 
 	q_start[2] = 1.0;
 
@@ -182,8 +179,6 @@ void TestVal_IK::initialize_configuration(){
 	q_start[getJointId("leftForearmYaw")] = 1.5;  
  
 	std::cout << "q_start:" << q_start.transpose() << std::endl;
-	std::cout << "q_end:" << q_end.transpose() << std::endl;
-
 
 	q_end = q_start;
 	// Update configuration kinematics
@@ -227,12 +222,18 @@ void TestVal_IK::initialize_desired(){
     J_task = Eigen::MatrixXd::Zero(task_dim, model.nv);    
     task_error = Eigen::VectorXd::Zero(task_dim);
 
+  	std::cout << "Desired Pose of rightCOP_Frame:" << std::endl; 
+  	printPose(rfoot_des_pos, rfoot_des_quat);
+
+  	std::cout << "Desired Pose of rightCOP_Frame:" << std::endl; 
+  	printPose(lfoot_des_pos, lfoot_des_quat);
+
     std::cout << "Task Dim:" << task_dim << std::endl;
     std::cout << "Task Error Dim:" << task_error.size() << std::endl;
     std::cout << "J_task rows, cols: " << J_task.rows() << " " << J_task.cols() << std::endl;
 
     // Initialize SVD. Allocate Memory.
-    svd = std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> >( new Eigen::JacobiSVD<Eigen::MatrixXd>(J_task.rows(), model.nv) );
+    svd = std::unique_ptr< Eigen::JacobiSVD<Eigen::MatrixXd> >( new Eigen::JacobiSVD<Eigen::MatrixXd>(J_task.rows(), model.nv, svdOptions) );
     // Set Singular Value Threshold
 	const double svd_thresh = 1e-4;
 	svd->setThreshold(svd_thresh);
@@ -253,25 +254,25 @@ void TestVal_IK::getFrameWorldPose(const std::string & name, Eigen::Vector3d & p
 
   // std::cout << "Operational Frame position w.r.t world:" << std::endl;
   // std::cout << data->oMf[tmp_frame_index] << std::endl;
-  std::cout << name << ":" << std::endl;
-  std::cout << "Pos 3D: " << pos.transpose() << std::endl;
-  std::cout << "Quat (x,y,z,w): " << ori.x() << " " <<
-									 ori.y() << " " <<
-									 ori.z() << " " <<
-									 ori.w() << " " <<
-  std::endl;
+  // std::cout << name << ":" << std::endl;
+  // std::cout << "Pos 3D: " << pos.transpose() << std::endl;
+  // std::cout << "Quat (x,y,z,w): " << ori.x() << " " <<
+		// 							 ori.y() << " " <<
+		// 							 ori.z() << " " <<
+		// 							 ori.w() << " " <<
+  // std::endl;
 }
 
 void TestVal_IK::getTaskJacobian(const std::string & frame_name, Eigen::MatrixXd & J){
   tmp_frame_index = model.getFrameId(frame_name);
   pinocchio::getFrameJacobian(model, *data, tmp_frame_index, pinocchio::WORLD, J);
-  std::cout << frame_name << " Jacobian: " << std::endl;
-  std::cout << J << std::endl;
+  // std::cout << frame_name << " Jacobian: " << std::endl;
+  // std::cout << J << std::endl;
 }
 
 void TestVal_IK::computeTranslationError(const Eigen::Vector3d & des, const Eigen::Vector3d & current, Eigen::Vector3d & error){
 	error = des - current;
-	std::cout << "linear error:" << error.transpose() << std::endl;
+	// std::cout << "linear error:" << error.transpose() << std::endl;
 }
 
 void TestVal_IK::computeQuaternionError(const Eigen::Quaternion<double> & des, 
@@ -282,8 +283,8 @@ void TestVal_IK::computeQuaternionError(const Eigen::Quaternion<double> & des,
 	// Convert to Vector3. error = w^hat_error * theta_error. 
 	error = axis_angle.axis() * axis_angle.angle();
 
-	std::cout << "Error in axis Angle:" << std::endl;
-	std::cout << error.transpose() << std::endl;
+	// std::cout << "Error in axis Angle:" << std::endl;
+	// std::cout << error.transpose() << std::endl;
 
 }
 
@@ -291,6 +292,7 @@ void TestVal_IK::computeQuaternionError(const Eigen::Quaternion<double> & des,
 void TestVal_IK::printPose(const Eigen::Vector3d & pos, const Eigen::Quaternion<double> & ori){
   std::cout << "Position: " << pos.transpose() << std::endl;
   printQuat(ori);
+  std::cout << std::endl;
 }
 
 void TestVal_IK::printQuat(const Eigen::Quaternion<double> & ori){
@@ -301,30 +303,24 @@ void TestVal_IK::printQuat(const Eigen::Quaternion<double> & ori){
   std::endl;	
 }
 
-void TestVal_IK::doSingleStepIK(){
- //    Eigen::VectorXd q_start;
- //    Eigen::VectorXd q_end;    
+double TestVal_IK::doSingleStepIK(){
+/*
+	Update Kinematics
 
- //    Eigen::Vector3d rfoot_des_pos;
- //    Eigen::Quaternion<double> rfoot_des_quat;    
- //    Eigen::Vector3d rfoot_pos_error;
-	// Eigen::Vector3d rfoot_ori_error;
+	get current pos and orientation of hand and feet.
+	dx = des - current
 
-	// Eigen::Vector3d rfoot_cur_pos;
-	// Eigen::Quaternion<double> rfoot_cur_ori;
-	// Eigen::MatrixXd J_rfoot;
+	update the stacked task Jacobians
+	J = [J_left^T, J_right_^T]^T
 
- //    Eigen::Vector3d lfoot_des_pos;
- //    Eigen::Quaternion<double> lfoot_des_quat;    
- //    Eigen::Vector3d lfoot_pos_error;
-	// Eigen::Vector3d lfoot_ori_error;
+	compute the resulting command
+	dq = Jinv * dx
 
-	// Eigen::Vector3d lfoot_cur_pos;
-	// Eigen::Quaternion<double> lfoot_cur_ori;
-	// Eigen::MatrixXd J_lfoot;
+	update the robot:
+	q_plus = q + dq
 
- //    Eigen::MatrixXd J_task;    
- //    Eigen::VectorXd task_error;
+	check error: if norm(dx) < epsilon break;
+*/
 
 	// Update Kinematics
 	updateKinematics(q_end);
@@ -346,7 +342,7 @@ void TestVal_IK::doSingleStepIK(){
     task_error.segment<3>(6) = lfoot_pos_error;
     task_error.segment<3>(9) = lfoot_ori_error;
 
-    std::cout << "task error = " << task_error.transpose() << std::endl;
+    // std::cout << "task error = " << task_error.transpose() << std::endl;
 
     // Get Task Jacobians
 	getTaskJacobian("rightCOP_Frame", J_rfoot);
@@ -355,35 +351,51 @@ void TestVal_IK::doSingleStepIK(){
 	// Stack Jacobians
 	J_task.topRows(6) = J_rfoot;
 	J_task.bottomRows(6) = J_lfoot;
-	std::cout << "Task Jacobian:" << std::endl;
-	std::cout << J_task << std::endl;
+	// std::cout << "Task Jacobian:" << std::endl;
+	// std::cout << J_task << std::endl;
 
 	// Compute dq = Jpinv*(dx)
-	dq_change = (svd->compute(J_task, svdOptions)).solve(task_error);
-	std::cout << "dq_change:" << std::endl;
-	std::cout << dq_change.transpose() << std::endl;
+	dq_change = svd->compute(J_task).solve(task_error);
+	// std::cout << "dq_change:" << std::endl;
+	// std::cout << dq_change.transpose() << std::endl;
 
 	// Update once:
-	q_end = pinocchio::integrate(model, q_start, dq_change);
+	// q = q + dq;
+	q_end = pinocchio::integrate(model, q_end, dq_change);
+
+    // std::cout << "error norm = " << task_error.norm() << std::endl;
+
+    // Return the error norm
+    return task_error.norm();
 
 }
 
+bool TestVal_IK::doFullIk(const int & max_iters){
+	double ik_error_norm = 1000.0;
+	double eps = 1e-6;
+	for(int i = 0; i < max_iters; i++){
+		ik_error_norm = doSingleStepIK();
+		std::cout << "iter: " << i+1 << " error_norm = " << ik_error_norm << std::endl;
 
-/*
-	get current pos and orientation of hand and feet.
-	dx = des - current
+		if (ik_error_norm <= eps){
+			std::cout << "Final error norm = " << ik_error_norm << std::endl;
+			std::cout << "Converged to within error norm = " << eps << " after " << i+1 << " iters" <<std::endl;
+			std::cout << "q_end:" << q_end.transpose() << std::endl;
+			return true;
+			break;
+		}
 
-	check error: if norm(dx) < epsilon break;
-		
-	update the stacked task Jacobians
-	J = [J_left^T, J_right_^T]^T
+	}
 
-	compute the resulting command
-	dq = Jinv * dx
+	if (ik_error_norm > eps){
+			std::cout << "Final error norm = " << ik_error_norm << std::endl;
+			std::cout << "Failed to converge to within error norm = " << eps << " after " << max_iters << " iters" << std::endl;
+			std::cout << "q_end:" << q_end.transpose() << std::endl;
+			return false;
+	}
+}
 
-	update the robot:
-	q_plus = q + dq
-*/
+
 
 // Destructor
 TestVal_IK::~TestVal_IK(){
@@ -415,6 +427,7 @@ int main(int argc, char **argv){
 
 	// perform IK here
 	TestVal_IK val_robot;
+	val_robot.doFullIk(10); // Do a maximum of 10 iterations of IK descent
 
 	// Visualize in RVIZ
 	rviz_translator.populate_joint_state_msg(val_robot.model, val_robot.q_start, tf_world_pelvis_init, joint_msg_init);
