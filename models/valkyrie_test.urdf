@@ -455,12 +455,12 @@
       </geometry>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
     </visual>
-    <collision>
+<!--     <collision>
       <geometry>
         <mesh filename="package://val_desc/model/meshes/arms/aj3_right.dae"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision>
+    </collision> -->
   </link>
   <link name="rightElbowPitchLink">
     <inertial>
@@ -1082,12 +1082,12 @@
       </geometry>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
     </visual>
-    <collision>
+<!--     <collision>
       <geometry>
         <mesh filename="package://val_desc/model/meshes/arms/aj3_left.dae"/>
       </geometry>
       <origin rpy="0 0 0" xyz="0 0 0"/>
-    </collision>
+    </collision> -->
   </link>
   <link name="leftElbowPitchLink">
     <inertial>

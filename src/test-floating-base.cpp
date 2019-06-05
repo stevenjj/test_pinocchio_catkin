@@ -1,3 +1,5 @@
+#include <test_pinocchio_catkin/pinocchio_special_include_config.h>
+
 #include "pinocchio/multibody/model.hpp"
 #include "pinocchio/multibody/data.hpp"
 
@@ -43,8 +45,8 @@ int main(int argc, char ** argv)
   pinocchio::Data data(model);
 
   pinocchio::GeometryData geomData(geom);
-  // pinocchio::computeBodyRadius(model, geom, geomData);
-  // std::cout << "body radius" << geomData.radius << std::endl;
+  pinocchio::computeBodyRadius(model, geom, geomData);
+  std::cout << "num of body radius" << geomData.radius.size() << std::endl;
 
   Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
 
@@ -209,7 +211,6 @@ Eigen::VectorXd dq = svd.compute(J_task).solve(dx_des);
 
 std::cout << "dq change = " << std::endl;
 std::cout << dq.transpose() << std::endl;
-
 
 // std::cout << "number of rows in J_task: " <<  J_task.rows() << std::endl;
 // pinocchio::Data::RowMatrixXs lambda = J_task*data.Minv*J_task.transpose()
