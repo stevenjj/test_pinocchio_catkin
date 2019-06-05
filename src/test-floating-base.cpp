@@ -1,13 +1,18 @@
 #include "pinocchio/multibody/model.hpp"
+#include "pinocchio/multibody/data.hpp"
+
+#include "pinocchio/multibody/geometry.hpp"
+
 #include "pinocchio/parsers/urdf.hpp"
+#include "pinocchio/parsers/srdf.hpp"
+
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
-
-#include <math.h>       
-
-
+#include "pinocchio/algorithm/geometry.hpp"
 #include "pinocchio/algorithm/jacobian.hpp"
 #include "pinocchio/algorithm/frames.hpp"
+
+#include <math.h>       
 
 // Articulated Body Algorithm
 #include "pinocchio/algorithm/aba.hpp"
@@ -26,9 +31,20 @@ int main(int argc, char ** argv)
   PinocchioTicToc timer = PinocchioTicToc(PinocchioTicToc::US);
 
   std::string filename = (argc<=1) ? THIS_PACKAGE_PATH"models/valkyrie_test.urdf" : argv[1];
+
+  std::vector < std::string > packageDirs;
+  std::string meshDir  = THIS_PACKAGE_PATH"../val_model/";
+  packageDirs.push_back(meshDir);
+
   pinocchio::Model model;
   pinocchio::urdf::buildModel(filename, pinocchio::JointModelFreeFlyer(),model);
+  pinocchio::GeometryModel geom;
+  pinocchio::urdf::buildGeom(model, filename, pinocchio::COLLISION, geom, packageDirs);
   pinocchio::Data data(model);
+
+  pinocchio::GeometryData geomData(geom);
+  // pinocchio::computeBodyRadius(model, geom, geomData);
+  // std::cout << "body radius" << geomData.radius << std::endl;
 
   Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
 
